@@ -1,8 +1,8 @@
 import os
-from pathlib import Path
+from importlib import resources
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from dotenv import load_dotenv
 
 from app.schemas import (
@@ -33,19 +33,21 @@ def create_app(
     service = EnrichmentService(zyte_client=client, store=store)
 
     app = FastAPI(title="Work.ua Contact Enrichment MVP")
-    public_dir = Path(__file__).resolve().parent / "public"
+
+    def read_public_asset(filename: str) -> str:
+        return resources.files("app.public").joinpath(filename).read_text(encoding="utf-8")
 
     @app.get("/")
-    def index() -> FileResponse:
-        return FileResponse(public_dir / "index.html")
+    def index() -> Response:
+        return Response(content=read_public_asset("index.html"), media_type="text/html; charset=utf-8")
 
     @app.get("/app.js", include_in_schema=False)
-    def app_js() -> FileResponse:
-        return FileResponse(public_dir / "app.js", media_type="application/javascript")
+    def app_js() -> Response:
+        return Response(content=read_public_asset("app.js"), media_type="application/javascript")
 
     @app.get("/styles.css", include_in_schema=False)
-    def styles_css() -> FileResponse:
-        return FileResponse(public_dir / "styles.css", media_type="text/css")
+    def styles_css() -> Response:
+        return Response(content=read_public_asset("styles.css"), media_type="text/css")
 
     @app.get("/health")
     def healthcheck() -> dict[str, str]:
