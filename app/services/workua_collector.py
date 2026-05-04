@@ -17,7 +17,7 @@ class WorkuaCollectorService:
 
     def start_job(self, filter_url: str) -> int:
         job_id = self.store.create_collector_job(filter_url=filter_url)
-        log_action("collector_job_started", job_id=job_id, filter_url=filter_url)
+        self._safe_log("collector_job_started", job_id=job_id, filter_url=filter_url)
         worker = threading.Thread(target=self._run_job, args=(job_id, filter_url), daemon=True)
         worker.start()
         return job_id
@@ -26,7 +26,7 @@ class WorkuaCollectorService:
         items = self.store.get_collector_job_results(collector_job_id)
         if items is None:
             raise ValueError("Collector job not found")
-        log_action("collector_enrichment_started", collector_job_id=collector_job_id, total_items=len(items))
+        self._safe_log("collector_enrichment_started", collector_job_id=collector_job_id, total_items=len(items))
         return [
             JobItemRequest(
                 row_index=item.row_index,
@@ -79,7 +79,7 @@ class WorkuaCollectorService:
                 found_items=len(results),
                 error="",
             )
-            log_action(
+            self._safe_log(
                 "collector_job_completed",
                 job_id=job_id,
                 filter_url=filter_url,
@@ -95,7 +95,7 @@ class WorkuaCollectorService:
                 found_items=len(results),
                 error=str(exc),
             )
-            log_action(
+            self._safe_log(
                 "collector_job_failed",
                 job_id=job_id,
                 filter_url=filter_url,
@@ -110,3 +110,11 @@ class WorkuaCollectorService:
             return name
         parsed = urlparse(item.workua_url)
         return parsed.path.rstrip("/").split("/")[-1] or f"Vacancy {item.row_index - 1}"
+
+    def _safe_log(self, action: str, **payload: object) -> None:
+        try:
+            log_action(action, **payload)
+        except OSError:
+            pass
+        except PermissionError:
+            pass

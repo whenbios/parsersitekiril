@@ -698,3 +698,23 @@ def test_root_page_contains_notice_banner_placeholder():
     response = client.get("/")
     assert response.status_code == 200
     assert 'id="noticeBanner"' in response.text
+
+
+def test_collector_start_survives_logging_failure(monkeypatch):
+    from fastapi.testclient import TestClient
+    import app.services.workua_collector as workua_collector
+
+    def broken_log(*args, **kwargs):
+        raise PermissionError("read-only filesystem")
+
+    monkeypatch.setattr(workua_collector, "log_action", broken_log)
+
+    app = create_app(zyte_client=WorkuaFilterZyteClient())
+    client = TestClient(app)
+
+    response = client.post(
+        "/collectors/workua/start",
+        json={"filter_url": "https://www.work.ua/jobs-python/"},
+    )
+
+    assert response.status_code == 200
