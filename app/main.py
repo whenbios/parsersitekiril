@@ -1,5 +1,4 @@
 import os
-from importlib import resources
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -17,6 +16,7 @@ from app.services.enrichment import EnrichmentService
 from app.services.exports import build_csv_export, build_xlsx_export
 from app.services.uploads import parse_upload_bytes
 from app.storage import JobStore
+from app.ui_assets import APP_JS, INDEX_HTML, STYLES_CSS
 from app.zyte import HttpZyteClient, ZyteClientProtocol
 
 
@@ -34,20 +34,17 @@ def create_app(
 
     app = FastAPI(title="Work.ua Contact Enrichment MVP")
 
-    def read_public_asset(filename: str) -> str:
-        return resources.files("app.public").joinpath(filename).read_text(encoding="utf-8")
-
     @app.get("/")
     def index() -> Response:
-        return Response(content=read_public_asset("index.html"), media_type="text/html; charset=utf-8")
+        return Response(content=INDEX_HTML, media_type="text/html; charset=utf-8")
 
     @app.get("/app.js", include_in_schema=False)
     def app_js() -> Response:
-        return Response(content=read_public_asset("app.js"), media_type="application/javascript")
+        return Response(content=APP_JS, media_type="application/javascript")
 
     @app.get("/styles.css", include_in_schema=False)
     def styles_css() -> Response:
-        return Response(content=read_public_asset("styles.css"), media_type="text/css")
+        return Response(content=STYLES_CSS, media_type="text/css")
 
     @app.get("/health")
     def healthcheck() -> dict[str, str]:
