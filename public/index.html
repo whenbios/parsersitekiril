@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Work.ua Contact Finder</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="topbar-copy">
+          <p class="eyebrow">Work.ua Outreach Helper</p>
+          <strong class="topbar-title">Проверка контактов</strong>
+        </div>
+        <div class="topbar-progress">
+          <div class="progress-line">
+            <div class="progress-copy">
+              <strong id="progressLabel">Нет активной проверки</strong>
+              <span id="progressCounts">0 из 0 проверено</span>
+            </div>
+            <div class="progress-bar compact">
+              <div id="progressFill" class="progress-fill"></div>
+            </div>
+          </div>
+          <div class="progress-stats" id="progressStats">
+            <span>Готово: 0</span>
+            <span>В работе: 0</span>
+            <span>В очереди: 0</span>
+            <span>Ошибки: 0</span>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <span id="jobStatus" class="status-chip idle">Ожидание</span>
+          <button id="refreshBtn" type="button" class="secondary-btn">Обновить</button>
+          <button id="downloadCsvBtn" type="button" class="secondary-btn" disabled>CSV</button>
+          <button id="downloadXlsxBtn" type="button" class="secondary-btn" disabled>XLSX</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Быстрый рабочий сценарий</p>
+          <h1>Загрузи ссылки и сразу получи лучшие контакты для связи.</h1>
+          <p class="lede">
+            Сервис берет ссылки на компании с Work.ua, заходит на сайты компаний и собирает полезные контакты.
+            Сначала ты видишь лучший контакт, потом запасной вариант и контакт из Work.ua на случай, если он понадобится.
+          </p>
+        </div>
+      </section>
+
+      <section class="panel input-panel">
+        <div class="panel-header compact-header">
+          <div>
+            <h2>Запустить проверку</h2>
+            <p class="panel-copy">Можно загрузить файл или просто вставить ссылки вручную.</p>
+          </div>
+        </div>
+
+        <div class="upload-grid">
+          <form id="uploadForm" class="upload-box">
+            <div class="field-head">
+              <label for="fileInput">Загрузить файл</label>
+              <p class="field-hint">Поддерживаются `.xlsx` и `.csv`. Если это твоя таблица, достаточно колонок <code>workua_url</code> и <code>company_name</code>.</p>
+            </div>
+            <label for="fileInput" class="file-drop">
+              <input id="fileInput" name="file" type="file" accept=".xlsx,.csv" />
+              <span class="file-drop-title">Выбрать файл</span>
+              <span id="fileName" class="file-drop-name">Файл еще не выбран</span>
+            </label>
+            <button type="submit" class="primary-btn wide-btn">Загрузить и запустить</button>
+          </form>
+
+          <form id="linksForm" class="upload-box">
+            <div class="field-head">
+              <label for="linksInput">Вставить ссылки вручную</label>
+              <p class="field-hint">Каждая ссылка с новой строки. Если хочешь, можно писать так: <code>Название компании|ссылка</code>.</p>
+            </div>
+            <textarea id="linksInput" placeholder="https://www.work.ua/jobs/..."></textarea>
+            <button type="submit" class="primary-btn wide-btn">Запустить по ссылкам</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="panel table-panel">
+        <div class="panel-header results-header">
+          <div>
+            <h2>Результаты</h2>
+            <p class="panel-copy">Открой строку компании, чтобы посмотреть все найденные контакты.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Компания</th>
+                <th>Сайт</th>
+                <th>Лучший контакт</th>
+                <th>Запасной</th>
+                <th>Контакт из Work.ua</th>
+                <th>Статус</th>
+              </tr>
+            </thead>
+            <tbody id="resultsBody">
+              <tr><td colspan="6" class="empty-state">После запуска здесь появятся результаты.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <aside id="detailsDrawer" class="drawer hidden">
+      <div class="drawer-card">
+        <button id="closeDrawer" class="close-btn" type="button">Закрыть</button>
+        <div id="drawerContent"></div>
+      </div>
+    </aside>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
