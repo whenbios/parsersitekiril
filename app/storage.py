@@ -3,7 +3,7 @@ import sqlite3
 import threading
 from pathlib import Path
 
-from app.schemas import EnrichedRow, JobStatusResponse
+from app.schemas import CollectedVacancy, CollectorStatusResponse, EnrichedRow, JobStatusResponse
 
 
 class JobStore:
@@ -54,6 +54,29 @@ class JobStore:
                 )
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS collector_jobs (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  status TEXT NOT NULL,
+                  filter_url TEXT NOT NULL,
+                  total_pages INTEGER NOT NULL,
+                  processed_pages INTEGER NOT NULL,
+                  found_items INTEGER NOT NULL,
+                  error TEXT NOT NULL DEFAULT ''
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS collector_results (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  job_id INTEGER NOT NULL,
+                  row_index INTEGER NOT NULL,
+                  payload TEXT NOT NULL
+                )
+                """
+            )
             self.connection.commit()
 
     def create_job(self, *, total_items: int) -> int:
@@ -69,11 +92,61 @@ class JobStore:
             self.connection.commit()
             return int(cursor.lastrowid)
 
+    def create_collector_job(self, *, filter_url: str) -> int:
+        with self.lock:
+            cursor = self.connection.cursor()
+            cursor.execute(
+                """
+                INSERT INTO collector_jobs (status, filter_url, total_pages, processed_pages, found_items, error)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                ("queued", filter_url, 0, 0, 0, ""),
+            )
+            self.connection.commit()
+            return int(cursor.lastrowid)
+
     def set_job_status(self, job_id: int, status: str) -> None:
         with self.lock:
             self.connection.execute(
                 "UPDATE jobs SET status = ? WHERE id = ?",
                 (status, job_id),
+            )
+            self.connection.commit()
+
+    def update_collector_job(
+        self,
+        job_id: int,
+        *,
+        status: str | None = None,
+        total_pages: int | None = None,
+        processed_pages: int | None = None,
+        found_items: int | None = None,
+        error: str | None = None,
+    ) -> None:
+        updates: list[str] = []
+        params: list[object] = []
+        if status is not None:
+            updates.append("status = ?")
+            params.append(status)
+        if total_pages is not None:
+            updates.append("total_pages = ?")
+            params.append(total_pages)
+        if processed_pages is not None:
+            updates.append("processed_pages = ?")
+            params.append(processed_pages)
+        if found_items is not None:
+            updates.append("found_items = ?")
+            params.append(found_items)
+        if error is not None:
+            updates.append("error = ?")
+            params.append(error)
+        if not updates:
+            return
+        params.append(job_id)
+        with self.lock:
+            self.connection.execute(
+                f"UPDATE collector_jobs SET {', '.join(updates)} WHERE id = ?",
+                params,
             )
             self.connection.commit()
 
@@ -115,6 +188,18 @@ class JobStore:
             )
             self.connection.execute(
                 "INSERT INTO job_results (job_id, row_index, payload) VALUES (?, ?, ?)",
+                (job_id, result.row_index, json.dumps(result.model_dump())),
+            )
+            self.connection.commit()
+
+    def save_collector_result(self, job_id: int, result: CollectedVacancy) -> None:
+        with self.lock:
+            self.connection.execute(
+                "DELETE FROM collector_results WHERE job_id = ? AND row_index = ?",
+                (job_id, result.row_index),
+            )
+            self.connection.execute(
+                "INSERT INTO collector_results (job_id, row_index, payload) VALUES (?, ?, ?)",
                 (job_id, result.row_index, json.dumps(result.model_dump())),
             )
             self.connection.commit()
@@ -186,3 +271,39 @@ class JobStore:
                 (job_id,),
             ).fetchall()
             return [EnrichedRow.model_validate(json.loads(row["payload"])) for row in rows]
+
+    def get_collector_job_status(self, job_id: int) -> CollectorStatusResponse | None:
+        with self.lock:
+            row = self.connection.execute(
+                """
+                SELECT id, status, filter_url, total_pages, processed_pages, found_items, error
+                FROM collector_jobs
+                WHERE id = ?
+                """,
+                (job_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return CollectorStatusResponse(
+                job_id=int(row["id"]),
+                status=row["status"],
+                filter_url=row["filter_url"],
+                total_pages=int(row["total_pages"]),
+                processed_pages=int(row["processed_pages"]),
+                found_items=int(row["found_items"]),
+                error=row["error"],
+            )
+
+    def get_collector_job_results(self, job_id: int) -> list[CollectedVacancy] | None:
+        with self.lock:
+            exists = self.connection.execute(
+                "SELECT 1 FROM collector_jobs WHERE id = ?",
+                (job_id,),
+            ).fetchone()
+            if exists is None:
+                return None
+            rows = self.connection.execute(
+                "SELECT payload FROM collector_results WHERE job_id = ? ORDER BY row_index ASC",
+                (job_id,),
+            ).fetchall()
+            return [CollectedVacancy.model_validate(json.loads(row["payload"])) for row in rows]

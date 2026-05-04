@@ -23,6 +23,33 @@ class JobStartResponse(BaseModel):
     job_id: int
 
 
+class WorkuaCollectRequest(BaseModel):
+    filter_url: str
+
+
+class CollectedVacancy(BaseModel):
+    row_index: int
+    company_name: str
+    workua_url: str
+    page_number: int
+    status: str = Field(default="collected")
+
+
+class CollectorStatusResponse(BaseModel):
+    job_id: int
+    status: str
+    filter_url: str
+    total_pages: int
+    processed_pages: int
+    found_items: int
+    error: str = ""
+
+
+class CollectorResultsResponse(BaseModel):
+    job_id: int
+    items: list[CollectedVacancy]
+
+
 class EnrichedRow(BaseModel):
     row_index: int | None = None
     company_name: str

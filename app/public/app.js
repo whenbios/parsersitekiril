@@ -1,7 +1,18 @@
 const state = {
+  activeJobType: null,
   jobId: null,
+  collectorJobId: null,
   results: [],
+  collectedResults: [],
 };
+
+const collectForm = document.getElementById("collectForm");
+const filterUrlInput = document.getElementById("filterUrlInput");
+const collectorSummary = document.getElementById("collectorSummary");
+const collectorBody = document.getElementById("collectorBody");
+const downloadCollectedCsvBtn = document.getElementById("downloadCollectedCsvBtn");
+const downloadCollectedXlsxBtn = document.getElementById("downloadCollectedXlsxBtn");
+const runCollectedEnrichmentBtn = document.getElementById("runCollectedEnrichmentBtn");
 
 const uploadForm = document.getElementById("uploadForm");
 const linksForm = document.getElementById("linksForm");
@@ -27,11 +38,56 @@ fileInput.addEventListener("change", () => {
   fileName.textContent = fileInput.files.length ? fileInput.files[0].name : "Файл еще не выбран";
 });
 
+collectForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const filterUrl = filterUrlInput.value.trim();
+  if (!filterUrl) return;
+
+  state.activeJobType = "collector";
+  state.collectorJobId = null;
+  state.collectedResults = [];
+  renderCollectorTable();
+  syncCollectorButtons();
+  setStatus("processing", "Сбор ссылок");
+
+  const response = await fetch("/collectors/workua/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filter_url: filterUrl }),
+  });
+  const data = await response.json();
+  state.collectorJobId = data.job_id;
+  syncCollectorButtons();
+  startPolling();
+});
+
+runCollectedEnrichmentBtn.addEventListener("click", async () => {
+  if (!state.collectorJobId) return;
+  setStatus("processing", "Запуск анализа");
+  const response = await fetch(`/collectors/workua/${state.collectorJobId}/start-enrichment`, {
+    method: "POST",
+  });
+  const data = await response.json();
+  state.activeJobType = "enrichment";
+  state.jobId = data.job_id;
+  setExportButtons();
+  startPolling();
+});
+
+downloadCollectedCsvBtn.addEventListener("click", () => {
+  if (state.collectorJobId) window.open(`/collectors/workua/${state.collectorJobId}/export.csv`, "_blank");
+});
+
+downloadCollectedXlsxBtn.addEventListener("click", () => {
+  if (state.collectorJobId) window.open(`/collectors/workua/${state.collectorJobId}/export.xlsx`, "_blank");
+});
+
 uploadForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!fileInput.files.length) return;
   const form = new FormData();
   form.append("file", fileInput.files[0]);
+  state.activeJobType = "enrichment";
   setStatus("processing", "Загрузка");
   const response = await fetch("/jobs/upload", { method: "POST", body: form });
   const data = await response.json();
@@ -57,6 +113,7 @@ linksForm.addEventListener("submit", async (event) => {
     };
   });
 
+  state.activeJobType = "enrichment";
   setStatus("processing", "Запуск");
   const response = await fetch("/jobs/start", {
     method: "POST",
@@ -70,7 +127,9 @@ linksForm.addEventListener("submit", async (event) => {
 });
 
 refreshBtn.addEventListener("click", async () => {
-  if (state.jobId) {
+  if (state.activeJobType === "collector" && state.collectorJobId) {
+    await refreshCollectorResults();
+  } else if (state.jobId) {
     await refreshResults();
   }
 });
@@ -88,10 +147,26 @@ drawer.addEventListener("click", (event) => {
   if (event.target === drawer) drawer.classList.add("hidden");
 });
 
+async function refreshCollectorResults() {
+  const statusResponse = await fetch(`/collectors/workua/${state.collectorJobId}/status`);
+  const statusData = await statusResponse.json();
+  updateCollectorProgress(statusData);
+
+  const resultsResponse = await fetch(`/collectors/workua/${state.collectorJobId}/results`);
+  const resultsData = await resultsResponse.json();
+  state.collectedResults = resultsData.items;
+  renderCollectorTable();
+  syncCollectorButtons();
+
+  if (statusData.status === "completed") {
+    stopPolling();
+  }
+}
+
 async function refreshResults() {
   const statusResponse = await fetch(`/jobs/${state.jobId}/status`);
   const statusData = await statusResponse.json();
-  updateProgress(statusData);
+  updateEnrichmentProgress(statusData);
 
   const statusKind =
     statusData.status === "completed"
@@ -109,6 +184,25 @@ async function refreshResults() {
   if (statusData.status === "completed" || statusData.status === "failed") {
     stopPolling();
   }
+}
+
+function renderCollectorTable() {
+  if (!state.collectedResults.length) {
+    collectorBody.innerHTML = `<tr><td colspan="3" class="empty-state">После сбора здесь появится список вакансий.</td></tr>`;
+    return;
+  }
+
+  collectorBody.innerHTML = state.collectedResults
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHtml(item.company_name || "Без названия")}</td>
+          <td><a href="${item.workua_url}" target="_blank" rel="noopener">${escapeHtml(item.workua_url)}</a></td>
+          <td>${escapeHtml(String(item.page_number || ""))}</td>
+        </tr>
+      `,
+    )
+    .join("");
 }
 
 function renderTable() {
@@ -201,7 +295,40 @@ function setStatus(kind, label) {
   jobStatus.textContent = label;
 }
 
-function updateProgress(statusData) {
+function updateCollectorProgress(statusData) {
+  const total = statusData.total_pages || statusData.processed_pages || 0;
+  const processed = statusData.processed_pages || 0;
+  const percent = total ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+
+  progressSummary.textContent =
+    statusData.status === "completed"
+      ? "Сбор вакансий завершен"
+      : statusData.status === "failed"
+        ? "Сбор вакансий завершился с ошибкой"
+        : "Идет сбор вакансий из фильтра Work.ua";
+  progressCounts.textContent = total ? `${processed} из ${total} страниц обработано` : `${processed} страниц обработано`;
+  progressFill.style.width = `${percent}%`;
+  progressStats.innerHTML = `
+    <span>Собрано вакансий: ${statusData.found_items}</span>
+    <span>Обработано страниц: ${statusData.processed_pages}</span>
+    <span>Всего страниц: ${statusData.total_pages || "—"}</span>
+  `;
+
+  collectorSummary.textContent =
+    statusData.status === "completed"
+      ? `Найдено ${statusData.found_items} вакансий на ${statusData.processed_pages} страницах.`
+      : `Собрано ${statusData.found_items} вакансий. Обработано страниц: ${statusData.processed_pages}.`;
+
+  const statusKind =
+    statusData.status === "completed"
+      ? "done"
+      : statusData.status === "failed"
+        ? "failed"
+        : "processing";
+  setStatus(statusKind, statusData.status === "completed" ? "Список собран" : "Сбор ссылок");
+}
+
+function updateEnrichmentProgress(statusData) {
   const done = statusData.done_items + statusData.failed_items;
   const total = statusData.total_items || 0;
   const percent = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
@@ -211,7 +338,7 @@ function updateProgress(statusData) {
       ? "Проверка завершена"
       : statusData.status === "failed"
         ? "Проверка завершилась с ошибкой"
-        : "Идет проверка компаний";
+        : "Идет анализ контактов";
   progressCounts.textContent = total ? `${done} из ${total} проверено` : "0 из 0 проверено";
   progressFill.style.width = `${percent}%`;
   progressStats.innerHTML = `
@@ -222,6 +349,13 @@ function updateProgress(statusData) {
   `;
 }
 
+function syncCollectorButtons() {
+  const enabled = Boolean(state.collectorJobId && state.collectedResults.length);
+  downloadCollectedCsvBtn.disabled = !enabled;
+  downloadCollectedXlsxBtn.disabled = !enabled;
+  runCollectedEnrichmentBtn.disabled = !enabled;
+}
+
 function setExportButtons() {
   const enabled = Boolean(state.jobId);
   downloadCsvBtn.disabled = !enabled;
@@ -230,6 +364,11 @@ function setExportButtons() {
 
 function startPolling() {
   stopPolling();
+  if (state.activeJobType === "collector") {
+    refreshCollectorResults();
+    pollTimer = window.setInterval(refreshCollectorResults, 2500);
+    return;
+  }
   refreshResults();
   pollTimer = window.setInterval(refreshResults, 2500);
 }

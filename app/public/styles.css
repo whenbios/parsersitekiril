@@ -172,6 +172,62 @@ h2 {
   gap: 18px;
 }
 
+.collector-box {
+  display: grid;
+  gap: 18px;
+}
+
+.collect-form,
+.collector-results {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fcf9 100%);
+}
+
+.collect-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+input[type="url"] {
+  width: 100%;
+  min-height: 58px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 0 16px;
+  font: inherit;
+  background: #fff;
+}
+
+input[type="url"]:focus {
+  outline: 2px solid rgba(10, 111, 69, 0.14);
+  border-color: rgba(10, 111, 69, 0.3);
+}
+
+.collector-results-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.collector-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.compact-table th,
+.compact-table td {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
 .upload-box {
   display: grid;
   gap: 14px;
@@ -494,9 +550,14 @@ tbody tr:hover {
   }
 
   .progress-copy,
-  .panel-header {
+  .panel-header,
+  .collector-results-head {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .collect-row {
+    grid-template-columns: 1fr;
   }
 
   .detail-row {

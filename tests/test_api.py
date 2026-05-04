@@ -1,5 +1,6 @@
 from app.main import create_app
 import time
+from pathlib import Path
 
 
 def wait_for_completed_job(client, job_id: int, timeout: float = 3.0) -> dict:
@@ -7,6 +8,20 @@ def wait_for_completed_job(client, job_id: int, timeout: float = 3.0) -> dict:
     final_status = None
     while time.time() < deadline:
         poll = client.get(f"/jobs/{job_id}/status")
+        final_status = poll.json()
+        if final_status["status"] == "completed":
+            return final_status
+        time.sleep(0.05)
+    assert final_status is not None
+    assert final_status["status"] == "completed"
+    return final_status
+
+
+def wait_for_completed_collect_job(client, job_id: int, timeout: float = 3.0) -> dict:
+    deadline = time.time() + timeout
+    final_status = None
+    while time.time() < deadline:
+        poll = client.get(f"/collectors/workua/{job_id}/status")
         final_status = poll.json()
         if final_status["status"] == "completed":
             return final_status
@@ -392,6 +407,46 @@ class DomainDuplicateZyteClient:
         raise AssertionError(f"unexpected url/browser combination {key}")
 
 
+class WorkuaFilterZyteClient:
+    def fetch(self, url: str, browser: bool = False) -> str:
+        pages = {
+            "https://www.work.ua/jobs-python/": """
+            <html><body>
+              <a href="/jobs/1111111/">Acme vacancy</a>
+              <a href="/jobs/2222222/">Beta vacancy</a>
+              <nav><a rel="next" href="/jobs-python/?page=2">Next</a></nav>
+            </body></html>
+            """,
+            "https://www.work.ua/jobs-python/?page=2": """
+            <html><body>
+              <a href="/jobs/2222222/">Beta vacancy duplicate</a>
+              <a href="/jobs/3333333/">Gamma vacancy</a>
+            </body></html>
+            """,
+            "https://www.work.ua/jobs/1111111/": """
+            <html><body><a href="https://acme.example.com">Official site</a></body></html>
+            """,
+            "https://acme.example.com": """
+            <html><body><a href="mailto:hello@acme.example.com">hello@acme.example.com</a></body></html>
+            """,
+            "https://www.work.ua/jobs/2222222/": """
+            <html><body><a href="https://beta.example.com">Official site</a></body></html>
+            """,
+            "https://beta.example.com": """
+            <html><body><a href="mailto:team@beta.example.com">team@beta.example.com</a></body></html>
+            """,
+            "https://www.work.ua/jobs/3333333/": """
+            <html><body><a href="https://gamma.example.com">Official site</a></body></html>
+            """,
+            "https://gamma.example.com": """
+            <html><body><a href="mailto:contact@gamma.example.com">contact@gamma.example.com</a></body></html>
+            """,
+        }
+        if url in pages:
+            return pages[url]
+        raise AssertionError(f"unexpected url {url}")
+
+
 def test_companies_enrich_stops_after_contact_stage_when_useful_contacts_found():
     from fastapi.testclient import TestClient
 
@@ -564,3 +619,71 @@ def test_job_exports_return_csv_and_xlsx():
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
     assert len(xlsx_response.content) > 100
+
+
+def test_collectors_workua_collects_unique_vacancy_links_and_exports():
+    from fastapi.testclient import TestClient
+
+    app = create_app(zyte_client=WorkuaFilterZyteClient())
+    client = TestClient(app)
+
+    start_response = client.post(
+        "/collectors/workua/start",
+        json={"filter_url": "https://www.work.ua/jobs-python/"},
+    )
+
+    assert start_response.status_code == 200
+    job_id = start_response.json()["job_id"]
+
+    final_status = wait_for_completed_collect_job(client, job_id)
+    assert final_status["processed_pages"] == 2
+    assert final_status["found_items"] == 3
+
+    results_response = client.get(f"/collectors/workua/{job_id}/results")
+    assert results_response.status_code == 200
+    items = results_response.json()["items"]
+    assert [item["workua_url"] for item in items] == [
+        "https://www.work.ua/jobs/1111111/",
+        "https://www.work.ua/jobs/2222222/",
+        "https://www.work.ua/jobs/3333333/",
+    ]
+
+    csv_response = client.get(f"/collectors/workua/{job_id}/export.csv")
+    assert csv_response.status_code == 200
+    assert "workua_url" in csv_response.text
+    assert "https://www.work.ua/jobs/3333333/" in csv_response.text
+
+
+def test_collectors_workua_can_start_enrichment_from_collected_results():
+    from fastapi.testclient import TestClient
+    import os
+    import time
+
+    log_path = Path(f"data/test-actions-{int(time.time() * 1000)}.log")
+    os.environ["ACTION_LOG_PATH"] = str(log_path)
+    app = create_app(zyte_client=WorkuaFilterZyteClient())
+    client = TestClient(app)
+
+    collect_response = client.post(
+        "/collectors/workua/start",
+        json={"filter_url": "https://www.work.ua/jobs-python/"},
+    )
+    collect_job_id = collect_response.json()["job_id"]
+    wait_for_completed_collect_job(client, collect_job_id)
+
+    enrich_response = client.post(f"/collectors/workua/{collect_job_id}/start-enrichment")
+    assert enrich_response.status_code == 200
+    enrich_job_id = enrich_response.json()["job_id"]
+
+    wait_for_completed_job(client, enrich_job_id)
+    results_response = client.get(f"/jobs/{enrich_job_id}/results")
+    items = results_response.json()["items"]
+    assert len(items) == 3
+    assert items[0]["general_email"] == "hello@acme.example.com"
+    assert items[1]["general_email"] == "team@beta.example.com"
+    assert items[2]["general_email"] == "contact@gamma.example.com"
+
+    log_text = log_path.read_text(encoding="utf-8")
+    assert "collector_job_started" in log_text
+    assert "collector_job_completed" in log_text
+    assert "collector_enrichment_started" in log_text

@@ -54,8 +54,58 @@
       <section class="panel input-panel">
         <div class="panel-header compact-header">
           <div>
-            <h2>Запустить проверку</h2>
-            <p class="panel-copy">Можно загрузить файл или просто вставить ссылки вручную.</p>
+            <h2>Собрать вакансии из фильтра Work.ua</h2>
+            <p class="panel-copy">Сначала можно собрать ссылки на вакансии со всех страниц фильтра, скачать их отдельным файлом, а потом отдельно передать в анализ контактов.</p>
+          </div>
+        </div>
+
+        <div class="collector-box">
+          <form id="collectForm" class="collect-form">
+            <div class="field-head">
+              <label for="filterUrlInput">Ссылка на фильтр Work.ua</label>
+              <p class="field-hint">Вставь ссылку на страницу Work.ua с уже выбранными фильтрами. Сервис пройдет по всем страницам выдачи и соберет ссылки на вакансии.</p>
+            </div>
+            <div class="collect-row">
+              <input id="filterUrlInput" type="url" placeholder="https://www.work.ua/jobs-.../" />
+              <button type="submit" class="primary-btn">Собрать ссылки</button>
+            </div>
+          </form>
+
+          <div class="collector-results">
+            <div class="collector-results-head">
+              <div>
+                <h3>Собранные вакансии</h3>
+                <p id="collectorSummary" class="panel-copy">Пока список еще не собран.</p>
+              </div>
+              <div class="collector-actions">
+                <button id="downloadCollectedCsvBtn" type="button" class="secondary-btn" disabled>CSV</button>
+                <button id="downloadCollectedXlsxBtn" type="button" class="secondary-btn" disabled>XLSX</button>
+                <button id="runCollectedEnrichmentBtn" type="button" class="primary-btn" disabled>Передать в анализ контактов</button>
+              </div>
+            </div>
+            <div class="table-wrap compact-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Компания</th>
+                    <th>Ссылка на вакансию</th>
+                    <th>Страница</th>
+                  </tr>
+                </thead>
+                <tbody id="collectorBody">
+                  <tr><td colspan="3" class="empty-state">После сбора здесь появится список вакансий.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel input-panel">
+        <div class="panel-header compact-header">
+          <div>
+            <h2>Запустить анализ контактов</h2>
+            <p class="panel-copy">Если список ссылок уже есть, можно загрузить файл или просто вставить ссылки вручную.</p>
           </div>
         </div>
 

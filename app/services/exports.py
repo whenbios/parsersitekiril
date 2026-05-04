@@ -5,7 +5,7 @@ from io import BytesIO, StringIO
 
 import openpyxl
 
-from app.schemas import EnrichedRow
+from app.schemas import CollectedVacancy, EnrichedRow
 
 
 EXPORT_COLUMNS = [
@@ -33,6 +33,13 @@ EXPORT_COLUMNS = [
     "last_checked",
 ]
 
+COLLECT_EXPORT_COLUMNS = [
+    "company_name",
+    "workua_url",
+    "page_number",
+    "status",
+]
+
 
 def build_csv_export(rows: list[EnrichedRow]) -> bytes:
     buffer = StringIO()
@@ -52,6 +59,29 @@ def build_xlsx_export(rows: list[EnrichedRow]) -> bytes:
     for row in rows:
         payload = row.model_dump()
         sheet.append([payload.get(column, "") for column in EXPORT_COLUMNS])
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+def build_collect_csv_export(rows: list[CollectedVacancy]) -> bytes:
+    buffer = StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=COLLECT_EXPORT_COLUMNS)
+    writer.writeheader()
+    for row in rows:
+        payload = row.model_dump()
+        writer.writerow({column: payload.get(column, "") for column in COLLECT_EXPORT_COLUMNS})
+    return buffer.getvalue().encode("utf-8-sig")
+
+
+def build_collect_xlsx_export(rows: list[CollectedVacancy]) -> bytes:
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = "vacancies"
+    sheet.append(COLLECT_EXPORT_COLUMNS)
+    for row in rows:
+        payload = row.model_dump()
+        sheet.append([payload.get(column, "") for column in COLLECT_EXPORT_COLUMNS])
     output = BytesIO()
     workbook.save(output)
     return output.getvalue()

@@ -4,6 +4,7 @@ import threading
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from urllib.parse import urljoin, urlparse
 
+from app.action_log import log_action
 from app.schemas import EnrichedRow, JobItemRequest
 from app.services.contacts import ContactSet, discover_relevant_pages, extract_contacts, flatten_contacts_for_sheet, normalize_url
 from app.services.presentation import summarize_contacts
@@ -212,6 +213,7 @@ class EnrichmentService:
 
     def start_job(self, items: list[JobItemRequest]) -> int:
         job_id = self.store.create_job(total_items=len(items))
+        log_action("enrichment_job_started", job_id=job_id, total_items=len(items))
         for item in items:
             self.store.add_job_item(job_id, item.row_index, item.company_name, item.workua_url, "queued")
         worker = threading.Thread(target=self._run_job, args=(job_id, items), daemon=True)
@@ -282,6 +284,13 @@ class EnrichmentService:
         done_items = sum(1 for result in results_by_row.values() if result.status != "failed")
         final_status = "failed" if failed_items == len(items) and items else "completed"
         self.store.finalize_job(job_id, final_status, done_items, failed_items)
+        log_action(
+            "enrichment_job_completed",
+            job_id=job_id,
+            status=final_status,
+            done_items=done_items,
+            failed_items=failed_items,
+        )
 
     def _group_items_by_company(self, items: list[JobItemRequest]) -> list[list[JobItemRequest]]:
         groups: dict[str, list[JobItemRequest]] = {}
@@ -310,11 +319,10 @@ class EnrichmentService:
                 if domain_key:
                     with domain_cache_lock:
                         cached_contacts = domain_cache.get(domain_key)
-                    if cached_contacts is not None:
-                        site_contacts = self._clone_contact_set(cached_contacts)
-                    else:
-                        site_contacts = self._collect_site_contacts(website)
-                        with domain_cache_lock:
+                        if cached_contacts is not None:
+                            site_contacts = self._clone_contact_set(cached_contacts)
+                        else:
+                            site_contacts = self._collect_site_contacts(website)
                             domain_cache.setdefault(domain_key, self._clone_contact_set(site_contacts))
                 status, error = self._resolve_status_and_error(website, site_contacts, workua_contacts)
                 result = self._build_enriched_row(
