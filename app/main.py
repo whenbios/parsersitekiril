@@ -33,7 +33,7 @@ def create_app(
     service = EnrichmentService(zyte_client=client, store=store)
 
     app = FastAPI(title="Work.ua Contact Enrichment MVP")
-    public_dir = Path(__file__).resolve().parent.parent / "public"
+    public_dir = Path(__file__).resolve().parent / "public"
 
     @app.get("/")
     def index() -> FileResponse:
