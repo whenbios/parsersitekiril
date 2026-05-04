@@ -10,6 +10,7 @@ const collectForm = document.getElementById("collectForm");
 const filterUrlInput = document.getElementById("filterUrlInput");
 const collectorSummary = document.getElementById("collectorSummary");
 const collectorBody = document.getElementById("collectorBody");
+const noticeBanner = document.getElementById("noticeBanner");
 const downloadCollectedCsvBtn = document.getElementById("downloadCollectedCsvBtn");
 const downloadCollectedXlsxBtn = document.getElementById("downloadCollectedXlsxBtn");
 const runCollectedEnrichmentBtn = document.getElementById("runCollectedEnrichmentBtn");
@@ -43,35 +44,49 @@ collectForm.addEventListener("submit", async (event) => {
   const filterUrl = filterUrlInput.value.trim();
   if (!filterUrl) return;
 
-  state.activeJobType = "collector";
-  state.collectorJobId = null;
-  state.collectedResults = [];
-  renderCollectorTable();
-  syncCollectorButtons();
-  setStatus("processing", "Сбор ссылок");
+  try {
+    hideNotice();
+    state.activeJobType = "collector";
+    state.collectorJobId = null;
+    state.collectedResults = [];
+    renderCollectorTable();
+    syncCollectorButtons();
+    setStatus("processing", "Сбор ссылок");
+    showNotice("Сбор ссылок запущен. Сейчас сервис пройдет по страницам фильтра Work.ua.", "info");
 
-  const response = await fetch("/collectors/workua/start", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ filter_url: filterUrl }),
-  });
-  const data = await response.json();
-  state.collectorJobId = data.job_id;
-  syncCollectorButtons();
-  startPolling();
+    const response = await fetch("/collectors/workua/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filter_url: filterUrl }),
+    });
+    const data = await parseJsonResponse(response, "Не удалось запустить сбор ссылок.");
+    state.collectorJobId = data.job_id;
+    syncCollectorButtons();
+    startPolling();
+  } catch (error) {
+    setStatus("failed", "Ошибка");
+    showNotice(error.message || "Не удалось запустить сбор ссылок.", "error");
+  }
 });
 
 runCollectedEnrichmentBtn.addEventListener("click", async () => {
   if (!state.collectorJobId) return;
-  setStatus("processing", "Запуск анализа");
-  const response = await fetch(`/collectors/workua/${state.collectorJobId}/start-enrichment`, {
-    method: "POST",
-  });
-  const data = await response.json();
-  state.activeJobType = "enrichment";
-  state.jobId = data.job_id;
-  setExportButtons();
-  startPolling();
+  try {
+    hideNotice();
+    setStatus("processing", "Запуск анализа");
+    showNotice("Список вакансий передается в анализ контактов.", "info");
+    const response = await fetch(`/collectors/workua/${state.collectorJobId}/start-enrichment`, {
+      method: "POST",
+    });
+    const data = await parseJsonResponse(response, "Не удалось запустить анализ контактов.");
+    state.activeJobType = "enrichment";
+    state.jobId = data.job_id;
+    setExportButtons();
+    startPolling();
+  } catch (error) {
+    setStatus("failed", "Ошибка");
+    showNotice(error.message || "Не удалось запустить анализ контактов.", "error");
+  }
 });
 
 downloadCollectedCsvBtn.addEventListener("click", () => {
@@ -85,15 +100,22 @@ downloadCollectedXlsxBtn.addEventListener("click", () => {
 uploadForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!fileInput.files.length) return;
-  const form = new FormData();
-  form.append("file", fileInput.files[0]);
-  state.activeJobType = "enrichment";
-  setStatus("processing", "Загрузка");
-  const response = await fetch("/jobs/upload", { method: "POST", body: form });
-  const data = await response.json();
-  state.jobId = data.job_id;
-  setExportButtons();
-  startPolling();
+  try {
+    hideNotice();
+    const form = new FormData();
+    form.append("file", fileInput.files[0]);
+    state.activeJobType = "enrichment";
+    setStatus("processing", "Загрузка");
+    showNotice("Файл загружен. Запускаю анализ контактов.", "info");
+    const response = await fetch("/jobs/upload", { method: "POST", body: form });
+    const data = await parseJsonResponse(response, "Не удалось загрузить файл.");
+    state.jobId = data.job_id;
+    setExportButtons();
+    startPolling();
+  } catch (error) {
+    setStatus("failed", "Ошибка");
+    showNotice(error.message || "Не удалось загрузить файл.", "error");
+  }
 });
 
 linksForm.addEventListener("submit", async (event) => {
@@ -113,17 +135,24 @@ linksForm.addEventListener("submit", async (event) => {
     };
   });
 
-  state.activeJobType = "enrichment";
-  setStatus("processing", "Запуск");
-  const response = await fetch("/jobs/start", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ items }),
-  });
-  const data = await response.json();
-  state.jobId = data.job_id;
-  setExportButtons();
-  startPolling();
+  try {
+    hideNotice();
+    state.activeJobType = "enrichment";
+    setStatus("processing", "Запуск");
+    showNotice("Ссылки приняты. Запускаю анализ контактов.", "info");
+    const response = await fetch("/jobs/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    });
+    const data = await parseJsonResponse(response, "Не удалось запустить анализ контактов.");
+    state.jobId = data.job_id;
+    setExportButtons();
+    startPolling();
+  } catch (error) {
+    setStatus("failed", "Ошибка");
+    showNotice(error.message || "Не удалось запустить анализ контактов.", "error");
+  }
 });
 
 refreshBtn.addEventListener("click", async () => {
@@ -149,23 +178,27 @@ drawer.addEventListener("click", (event) => {
 
 async function refreshCollectorResults() {
   const statusResponse = await fetch(`/collectors/workua/${state.collectorJobId}/status`);
-  const statusData = await statusResponse.json();
+  const statusData = await parseJsonResponse(statusResponse, "Не удалось получить статус сбора ссылок.");
   updateCollectorProgress(statusData);
 
   const resultsResponse = await fetch(`/collectors/workua/${state.collectorJobId}/results`);
-  const resultsData = await resultsResponse.json();
+  const resultsData = await parseJsonResponse(resultsResponse, "Не удалось получить список собранных вакансий.");
   state.collectedResults = resultsData.items;
   renderCollectorTable();
   syncCollectorButtons();
 
   if (statusData.status === "completed") {
+    showNotice(`Сбор завершен. Найдено вакансий: ${statusData.found_items}.`, "success");
+    stopPolling();
+  } else if (statusData.status === "failed") {
+    showNotice(statusData.error || "Сбор ссылок завершился с ошибкой.", "error");
     stopPolling();
   }
 }
 
 async function refreshResults() {
   const statusResponse = await fetch(`/jobs/${state.jobId}/status`);
-  const statusData = await statusResponse.json();
+  const statusData = await parseJsonResponse(statusResponse, "Не удалось получить статус анализа контактов.");
   updateEnrichmentProgress(statusData);
 
   const statusKind =
@@ -177,11 +210,16 @@ async function refreshResults() {
   setStatus(statusKind, translateStatus(statusData.status));
 
   const resultsResponse = await fetch(`/jobs/${state.jobId}/results`);
-  const resultsData = await resultsResponse.json();
+  const resultsData = await parseJsonResponse(resultsResponse, "Не удалось получить результаты анализа.");
   state.results = resultsData.items;
   renderTable();
 
   if (statusData.status === "completed" || statusData.status === "failed") {
+    if (statusData.status === "completed") {
+      showNotice(`Анализ завершен. Готово: ${statusData.done_items}, ошибок: ${statusData.failed_items}.`, "success");
+    } else {
+      showNotice("Анализ завершился с ошибкой.", "error");
+    }
     stopPolling();
   }
 }
@@ -354,6 +392,30 @@ function syncCollectorButtons() {
   downloadCollectedCsvBtn.disabled = !enabled;
   downloadCollectedXlsxBtn.disabled = !enabled;
   runCollectedEnrichmentBtn.disabled = !enabled;
+}
+
+async function parseJsonResponse(response, fallbackMessage) {
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+  if (response.ok) {
+    return payload || {};
+  }
+  const detail = payload?.detail || payload?.error || fallbackMessage;
+  throw new Error(detail);
+}
+
+function showNotice(message, kind = "info") {
+  noticeBanner.textContent = message;
+  noticeBanner.className = `notice-banner ${kind}`;
+}
+
+function hideNotice() {
+  noticeBanner.textContent = "";
+  noticeBanner.className = "notice-banner hidden";
 }
 
 function setExportButtons() {

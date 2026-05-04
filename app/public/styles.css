@@ -102,6 +102,37 @@ a:hover {
   box-shadow: var(--shadow);
 }
 
+.notice-banner {
+  padding: 14px 18px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: #fff;
+  box-shadow: var(--shadow);
+  font-weight: 600;
+}
+
+.notice-banner.hidden {
+  display: none;
+}
+
+.notice-banner.info {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: #bfe4cf;
+}
+
+.notice-banner.success {
+  color: var(--good);
+  background: #eefbf4;
+  border-color: #bfe4cf;
+}
+
+.notice-banner.error {
+  color: var(--danger);
+  background: #fff4f1;
+  border-color: #f0c6be;
+}
+
 .hero {
   padding: 34px;
   background: linear-gradient(135deg, #ffffff 0%, #f3faf5 100%);

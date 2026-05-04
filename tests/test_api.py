@@ -687,3 +687,14 @@ def test_collectors_workua_can_start_enrichment_from_collected_results():
     assert "collector_job_started" in log_text
     assert "collector_job_completed" in log_text
     assert "collector_enrichment_started" in log_text
+
+
+def test_root_page_contains_notice_banner_placeholder():
+    from fastapi.testclient import TestClient
+
+    app = create_app(zyte_client=FakeZyteClient())
+    client = TestClient(app)
+
+    response = client.get("/")
+    assert response.status_code == 200
+    assert 'id="noticeBanner"' in response.text
